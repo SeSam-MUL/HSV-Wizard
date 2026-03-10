@@ -45,7 +45,7 @@ python code/hsv_wizard.py
 
 ## Pre-built Executable
 
-A standalone Windows executable (`HSV-Wizard.exe`) is available in the repository (built with PyInstaller). No Python installation required.
+A standalone Windows executable (`HSV-Wizard.exe`) is available on the [Releases](https://github.com/SeSam-MUL/HSV-Wizard/releases) page (built with PyInstaller). No Python installation required — just download and run.
 
 ## Running Tests
 

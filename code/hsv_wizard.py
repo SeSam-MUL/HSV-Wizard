@@ -34,22 +34,32 @@ def rgb_to_hsv(r, g, b):
 def create_hsv_color_wheel(radius=150):
     """Create an HSV color wheel image with angular tick marks and labels."""
     size = radius * 2
-    image = Image.new('RGB', (size, size), (255, 255, 255))
-    draw = ImageDraw.Draw(image)
-
     center = radius
-    # Draw the color wheel
-    for x in range(size):
-        for y in range(size):
-            dx = x - center
-            dy = y - center
-            distance = (dx**2 + dy**2)**0.5
-            if distance <= radius:
-                angle = (np.degrees(np.arctan2(dy, dx)) + 360) % 360
-                hue = angle / 360.0
-                saturation = distance / radius
-                rgb = hsv_to_rgb(hue, saturation, 1)
-                draw.point((x, y), fill=rgb)
+
+    # Vectorized color wheel generation using numpy
+    y_coords, x_coords = np.mgrid[0:size, 0:size]
+    dx = x_coords - center
+    dy = y_coords - center
+    distance = np.sqrt(dx**2 + dy**2)
+    angle = (np.degrees(np.arctan2(dy, dx)) + 360) % 360
+
+    # Create HSV arrays
+    hue = (angle / 360.0 * 255).astype(np.uint8)
+    saturation = np.clip((distance / radius * 255), 0, 255).astype(np.uint8)
+    value = np.full_like(hue, 255)
+
+    # Stack into HSV image and convert to RGB
+    hsv_array = np.stack([hue, saturation, value], axis=-1)
+    hsv_img = Image.fromarray(hsv_array, 'HSV')
+    image = hsv_img.convert('RGB')
+
+    # Set pixels outside the circle to white
+    mask = distance > radius
+    rgb_array = np.array(image)
+    rgb_array[mask] = [255, 255, 255]
+    image = Image.fromarray(rgb_array)
+
+    draw = ImageDraw.Draw(image)
 
     # Draw angle scale
     for angle_deg in range(0, 360, 15):  # Every 15 degrees
@@ -254,31 +264,38 @@ class HSVThresholdAdjuster(tk.Tk):
         # Create GUI elements
         self.create_widgets()
 
-        # Load image
+        # Try to load an initial image; if cancelled, show placeholder
         self.load_image_initial()
 
-        # Update threshold lines
-        self.update_threshold_lines()
-
-        # Update the displayed image
-        self.update_image()
+        if hasattr(self, 'original_image'):
+            # Update threshold lines
+            self.update_threshold_lines()
+            # Update the displayed image
+            self.update_image()
+        else:
+            # Show a placeholder message on the canvas
+            self.image_canvas.create_text(
+                400, 300, text="No image loaded.\nUse File > Load New Image to open an image.",
+                font=("Arial", 14), fill="gray", tag="placeholder"
+            )
 
     def load_image_initial(self):
-        # Prompt the user to select an image file
+        """Prompt user to select an image on startup. If cancelled, the app stays open."""
         image_path = filedialog.askopenfilename(
             title='Select Image',
             filetypes=[('Image Files', '*.tif;*.tiff;*.png;*.jpg;*.jpeg;*.bmp')]
         )
 
         if not image_path:
-            # If no file is selected, exit the application
-            self.destroy()
             return
 
         self.load_image(image_path)
 
     def load_image(self, image_path):
         try:
+            # Remove placeholder text if present
+            self.image_canvas.delete("placeholder")
+
             # Open the image using Pillow
             self.original_image = Image.open(image_path)
 
@@ -287,10 +304,17 @@ class HSVThresholdAdjuster(tk.Tk):
                 self.original_image = self.original_image.convert('RGB')
 
             self.image_width, self.image_height = self.original_image.size
+
+            # Auto-fit zoom level to window size
+            self.update_idletasks()
+            canvas_width = self.image_canvas.winfo_width()
+            canvas_height = self.image_canvas.winfo_height()
+            if canvas_width > 1 and canvas_height > 1:
+                zoom_w = canvas_width / self.image_width
+                zoom_h = canvas_height / self.image_height
+                self.zoom_level = min(zoom_w, zoom_h, 1.0)
         except (IOError, OSError, ValueError) as e:
             messagebox.showerror("Error", f"Failed to load image:\n{e}")
-            self.destroy()
-            sys.exit()
 
     def enable_color_picker(self):
         self.image_canvas.bind("<Button-1>", self.pick_color)
@@ -332,9 +356,28 @@ class HSVThresholdAdjuster(tk.Tk):
         # Create menu bar
         self.create_menu()
 
-        # Create a frame for the controls
-        self.controls_frame = tk.Frame(self)
-        self.controls_frame.pack(side='left', padx=10, pady=10)
+        # Create a scrollable frame for the controls
+        self.controls_outer = tk.Frame(self)
+        self.controls_outer.pack(side='left', fill='y')
+
+        self.controls_canvas = tk.Canvas(self.controls_outer, width=330)
+        self.controls_scrollbar = tk.Scrollbar(self.controls_outer, orient='vertical',
+                                               command=self.controls_canvas.yview)
+        self.controls_frame = tk.Frame(self.controls_canvas)
+
+        self.controls_frame.bind('<Configure>',
+            lambda e: self.controls_canvas.configure(scrollregion=self.controls_canvas.bbox('all')))
+        self.controls_canvas.create_window((0, 0), window=self.controls_frame, anchor='nw')
+        self.controls_canvas.configure(yscrollcommand=self.controls_scrollbar.set)
+
+        self.controls_canvas.pack(side='left', fill='y', expand=True, padx=5, pady=5)
+        self.controls_scrollbar.pack(side='left', fill='y')
+
+        # Bind mousewheel to controls panel for scrolling
+        def _on_controls_mousewheel(event):
+            self.controls_canvas.yview_scroll(int(-1 * (event.delta / 120)), 'units')
+        self.controls_canvas.bind('<MouseWheel>', _on_controls_mousewheel)
+        self.controls_frame.bind('<MouseWheel>', _on_controls_mousewheel)
 
         # Create the HSV color wheel
         self.wheel_radius = 150
@@ -759,9 +802,12 @@ class HSVThresholdAdjuster(tk.Tk):
         self.image_canvas.bind('<B1-Motion>', self.on_canvas_drag)
 
     def load_new_image(self):
-        # Prompt the user to confirm
-        result = messagebox.askyesno("Load New Image", "Do you want to close the current image and load a new one?")
-        if result:
+        # Only ask for confirmation if an image is already loaded
+        if hasattr(self, 'original_image'):
+            result = messagebox.askyesno("Load New Image", "Do you want to close the current image and load a new one?")
+            if not result:
+                return
+        if True:
             # Ask the user to select a new image file
             image_path = filedialog.askopenfilename(
                 title='Select Image',
@@ -940,12 +986,14 @@ class HSVThresholdAdjuster(tk.Tk):
         return Image.fromarray(masked_array)
 
     def update_image(self):
+        if not hasattr(self, 'original_image'):
+            return
         masked_image = self._apply_hsv_mask(self.original_image)
 
         # Resize the image according to the zoom level
         zoomed_width = int(self.image_width * self.zoom_level)
         zoomed_height = int(self.image_height * self.zoom_level)
-        zoomed_image = masked_image.resize((zoomed_width, zoomed_height), Image.LANCZOS)
+        zoomed_image = masked_image.resize((zoomed_width, zoomed_height), Image.BILINEAR)
 
         self.masked_image_tk = ImageTk.PhotoImage(zoomed_image)
 

@@ -9,6 +9,7 @@ dist/
 # PyInstaller
 build/
 *.spec
+*.exe
 
 # Virtual environments
 .venv/
