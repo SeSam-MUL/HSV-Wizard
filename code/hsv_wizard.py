@@ -1,24 +1,38 @@
+"""
+HSV-Wizard: Interactive HSV Color Threshold Adjuster with Measurement Tools.
+
+A GUI application for scientific image analysis that provides interactive
+HSV (Hue, Saturation, Value) color thresholding, scale calibration, and
+distance measurement capabilities. Designed for microscopy and materials
+science image processing workflows.
+
+License: MIT
+Repository: https://github.com/SeSam-MUL/HSV-Wizard
+"""
+
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox, simpledialog
+from tkinter import filedialog, messagebox, simpledialog
 from tkinter import scrolledtext
-from PIL import Image, ImageTk, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageTk, ImageDraw, ImageFont
 import numpy as np
 import colorsys
 import sys
-import os
 import platform
 import csv
 
-# Helper function to convert HSV to RGB
+
 def hsv_to_rgb(h, s, v):
+    """Convert HSV values (h, s, v in [0, 1]) to an RGB tuple (0-255)."""
     return tuple(int(c * 255) for c in colorsys.hsv_to_rgb(h, s, v))
 
-# Helper function to convert RGB to HSV
+
 def rgb_to_hsv(r, g, b):
+    """Convert RGB values (0-255) to HSV tuple (h, s, v in [0, 1])."""
     return colorsys.rgb_to_hsv(r / 255, g / 255, b / 255)
 
-# Function to create the HSV color wheel with angle scale
+
 def create_hsv_color_wheel(radius=150):
+    """Create an HSV color wheel image with angular tick marks and labels."""
     size = radius * 2
     image = Image.new('RGB', (size, size), (255, 255, 255))
     draw = ImageDraw.Draw(image)
@@ -74,6 +88,7 @@ def create_hsv_color_wheel(radius=150):
 
 # Function to create the hue gradient bar with angle labels
 def create_hue_gradient_bar(width=300, height=50):
+    """Create a linear hue gradient bar image with angle labels."""
     image = Image.new('RGB', (width, height + 20), 'white')
     draw = ImageDraw.Draw(image)
     for x in range(width):
@@ -104,9 +119,12 @@ def create_hue_gradient_bar(width=300, height=50):
 
 # Mapping function from hue angle to x position on hue bar
 def hue_angle_to_x(hue_angle, width):
+    """Map a hue angle (0-360 degrees) to an x pixel position on a gradient bar."""
     return (hue_angle % 360) / 360 * width
 
 class CalibrationDialog(tk.Toplevel):
+    """Modal dialog for entering calibration parameters (length and units)."""
+
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Calibration")
@@ -145,6 +163,8 @@ class CalibrationDialog(tk.Toplevel):
         self.destroy()
 
 class MeasurementDialog(tk.Toplevel):
+    """Dialog for displaying, copying, and exporting measurement results."""
+
     def __init__(self, parent, measurements):
         super().__init__(parent)
         self.title("Measurements")
@@ -191,16 +211,16 @@ class MeasurementDialog(tk.Toplevel):
                     for i, length in enumerate(self.measurements):
                         writer.writerow([i+1, f"{length:.2f}"])
                 messagebox.showinfo("Saved", "Measurements saved successfully.")
-            except Exception as e:
+            except (IOError, OSError) as e:
                 messagebox.showerror("Error", f"Failed to save measurements:\n{e}")
 
 class HSVThresholdAdjuster(tk.Tk):
+    """Main application window for interactive HSV color thresholding,
+    scale calibration, and distance measurement on images."""
+
     def __init__(self):
         super().__init__()
         self.title('HSV Threshold Adjuster')
-
-        # Check for necessary libraries
-        self.check_dependencies()
 
         # Initialize thresholds
         self.hue_low = 0
@@ -243,25 +263,6 @@ class HSVThresholdAdjuster(tk.Tk):
         # Update the displayed image
         self.update_image()
 
-    def check_dependencies(self):
-        missing_packages = []
-        try:
-            import tkinter
-        except ImportError:
-            missing_packages.append('tkinter')
-        try:
-            import PIL
-        except ImportError:
-            missing_packages.append('Pillow')
-        try:
-            import numpy
-        except ImportError:
-            missing_packages.append('numpy')
-        if missing_packages:
-            messagebox.showerror("Missing Dependencies", f"The following packages are required but not installed:\n{', '.join(missing_packages)}\nPlease install them and try again.")
-            self.destroy()
-            sys.exit()
-
     def load_image_initial(self):
         # Prompt the user to select an image file
         image_path = filedialog.askopenfilename(
@@ -286,7 +287,7 @@ class HSVThresholdAdjuster(tk.Tk):
                 self.original_image = self.original_image.convert('RGB')
 
             self.image_width, self.image_height = self.original_image.size
-        except Exception as e:
+        except (IOError, OSError, ValueError) as e:
             messagebox.showerror("Error", f"Failed to load image:\n{e}")
             self.destroy()
             sys.exit()
@@ -370,8 +371,8 @@ class HSVThresholdAdjuster(tk.Tk):
         self.hue_bar_canvas.create_image(0, 0, anchor='nw', image=self.hue_bar_tk)
         self.hue_bar_selection = self.hue_bar_canvas.create_rectangle(0, 0, 0, 50, fill='gray', stipple='gray50', outline='')
         
-        # Keep a reference to the image
-        self.hue_bar_canvas.image = self.hue_bar_tk  # Add this line
+        # Keep a reference to the image to prevent garbage collection
+        self.hue_bar_canvas.image = self.hue_bar_tk
 
         # Create sliders for hue thresholds
         self.hue_frame = tk.Frame(self.controls_frame)
@@ -383,20 +384,6 @@ class HSVThresholdAdjuster(tk.Tk):
         self.hue_high_scale = tk.Scale(self.hue_frame, from_=0, to=360, orient='horizontal', command=self.update_hue)
         self.hue_high_scale.set(self.hue_high)
         self.hue_high_scale.pack(side='left')
-
-
-
-        # RGB Input Fields
-       # self.rgb_frame = tk.Frame(self.controls_frame)
-       # self.rgb_frame.pack(pady=5)
-        #tk.Label(self.rgb_frame, text="RGB Lower Limit:").grid(row=0, column=0, padx=5, pady=2)
-       # self.rgb_lower_entry = tk.Entry(self.rgb_frame, width=15)
-       # self.rgb_lower_entry.grid(row=0, column=1, padx=5, pady=2)
-       # tk.Label(self.rgb_frame, text="RGB Upper Limit:").grid(row=1, column=0, padx=5, pady=2)
-       # self.rgb_upper_entry = tk.Entry(self.rgb_frame, width=15)
-       # self.rgb_upper_entry.grid(row=1, column=1, padx=5, pady=2)
-       # self.rgb_lower_entry.bind("<Return>", self.update_from_rgb)
-       # self.rgb_upper_entry.bind("<Return>", self.update_from_rgb)
 
         # Create sliders for saturation and value
         self.sat_frame = tk.Frame(self.controls_frame)
@@ -484,11 +471,10 @@ class HSVThresholdAdjuster(tk.Tk):
         self.image_canvas.bind('<B1-Motion>', self.on_canvas_drag)
 
     def update_hue(self, val):
-            self.hue_low = min(self.hue_low_scale.get(), self.hue_high_scale.get())
-            self.hue_high = max(self.hue_low_scale.get(), self.hue_high_scale.get())
-            self.update_threshold_lines()
-            self.update_image()
-
+        self.hue_low = min(self.hue_low_scale.get(), self.hue_high_scale.get())
+        self.hue_high = max(self.hue_low_scale.get(), self.hue_high_scale.get())
+        self.update_threshold_lines()
+        self.update_image()
 
     def create_menu(self):
         menu_bar = tk.Menu(self)
@@ -546,43 +532,6 @@ class HSVThresholdAdjuster(tk.Tk):
         self.val_low = min(self.val_low_scale.get(), self.val_high_scale.get())
         self.val_high = max(self.val_low_scale.get(), self.val_high_scale.get())
         self.update_image()
-
-    def update_from_rgb(self, event):
-        try:
-            rgb_lower = tuple(int(x.strip()) for x in self.rgb_lower_entry.get().split(','))
-            rgb_upper = tuple(int(x.strip()) for x in self.rgb_upper_entry.get().split(','))
-            if len(rgb_lower) != 3 or len(rgb_upper) != 3:
-                raise ValueError
-            # Convert RGB to HSV
-            hsv_lower = rgb_to_hsv(*rgb_lower)
-            hsv_upper = rgb_to_hsv(*rgb_upper)
-            # Update thresholds
-            self.hue_low = hsv_lower[0] * 360
-            self.hue_high = hsv_upper[0] * 360
-            self.sat_low = hsv_lower[1] * 100
-            self.sat_high = hsv_upper[1] * 100
-            self.val_low = hsv_lower[2] * 100
-            self.val_high = hsv_upper[2] * 100
-            # Update GUI elements
-            self.sat_low_scale.set(self.sat_low)
-            self.sat_high_scale.set(self.sat_high)
-            self.val_low_scale.set(self.val_low)
-            self.val_high_scale.set(self.val_high)
-            self.update_threshold_lines()
-            self.update_image()
-        except ValueError:
-            messagebox.showerror("Input Error", "Please enter RGB values in the format R,G,B (e.g., 255,0,0).")
-
-    def update_rgb_entries(self):
-        # Convert HSV thresholds to RGB
-        rgb_lower = hsv_to_rgb(self.hue_low / 360, self.sat_low / 100, self.val_low / 100)
-        rgb_upper = hsv_to_rgb(self.hue_high / 360, self.sat_high / 100, self.val_high / 100)
-        rgb_lower = tuple(int(c) for c in rgb_lower)
-        rgb_upper = tuple(int(c) for c in rgb_upper)
-        self.rgb_lower_entry.delete(0, 'end')
-        self.rgb_lower_entry.insert(0, f"{rgb_lower[0]},{rgb_lower[1]},{rgb_lower[2]}")
-        self.rgb_upper_entry.delete(0, 'end')
-        self.rgb_upper_entry.insert(0, f"{rgb_upper[0]},{rgb_upper[1]},{rgb_upper[2]}")
 
     def calibrate_scale(self):
         # Ask the user if they want to calibrate the scale
@@ -649,7 +598,7 @@ class HSVThresholdAdjuster(tk.Tk):
         x_start = self.calibration_line_start[0] / self.zoom_level
         y_start = self.calibration_line_start[1] / self.zoom_level
         
-        pixel_distance = pixel_distance = ((x_end - x_start)**2 + (y_end - y_start)**2)**0.5
+        pixel_distance = ((x_end - x_start)**2 + (y_end - y_start)**2)**0.5
         if pixel_distance == 0:
             messagebox.showerror("Calibration Error", "Calibration line length cannot be zero.")
             self.image_canvas.delete(self.calibration_line)
@@ -667,7 +616,7 @@ class HSVThresholdAdjuster(tk.Tk):
             self.scale_calibrated = True
             messagebox.showinfo("Calibration Complete", f"Scale calibrated: {self.length_per_pixel:.4f} {self.length_units} per pixel.")
             self.undo_stack.append(('calibration_line', self.calibration_line))
-        except Exception as e:
+        except (ValueError, ZeroDivisionError) as e:
             messagebox.showerror("Calibration Error", f"Error during calibration:\n{e}")
             self.scale_calibrated = False
         self.image_canvas.delete(self.calibration_line)
@@ -683,7 +632,7 @@ class HSVThresholdAdjuster(tk.Tk):
             self.length_units = dialog.units
             self.scale_calibrated = True
             messagebox.showinfo("Calibration Complete", f"Scale calibrated: {self.length_per_pixel:.4f} {self.length_units} per pixel.")
-        except Exception as e:
+        except (ValueError, ZeroDivisionError) as e:
             messagebox.showerror("Calibration Error", f"Error during calibration:\n{e}")
             self.scale_calibrated = False
 
@@ -714,7 +663,7 @@ class HSVThresholdAdjuster(tk.Tk):
             self.image_canvas.tag_bind('scale_bar', '<ButtonRelease-1>', self.on_scale_bar_release)
             
             self.undo_stack.append(('scale_bar', (self.scale_bar, self.scale_bar_text)))
-        except Exception as e:
+        except (ValueError, ZeroDivisionError) as e:
             messagebox.showerror("Error", f"Failed to add scale bar:\n{e}")
 
     def on_scale_bar_press(self, event):
@@ -732,10 +681,12 @@ class HSVThresholdAdjuster(tk.Tk):
         
         self.scale_bar_x = self.image_canvas.canvasx(event.x)
         self.scale_bar_y = self.image_canvas.canvasy(event.y)
-    def on_scale_bar_release (self, event):
+
+    def on_scale_bar_release(self, event):
         # Re-enable panning after moving the scale bar
         self.image_canvas.bind('<ButtonPress-1>', self.on_canvas_click)
         self.image_canvas.bind('<B1-Motion>', self.on_canvas_drag)
+
     def start_measurement(self):
         if not self.scale_calibrated:
             messagebox.showwarning("Scale Not Calibrated", "Please calibrate the scale first.")
@@ -863,7 +814,7 @@ class HSVThresholdAdjuster(tk.Tk):
                     self.image_canvas.unbind("<B1-Motion>")
                     self.image_canvas.bind('<ButtonPress-1>', self.on_canvas_click)
                     self.image_canvas.bind('<B1-Motion>', self.on_canvas_drag)
-                except Exception as e:
+                except (IOError, OSError, ValueError) as e:
                     messagebox.showerror("Error", f"Failed to load image:\n{e}")
 
 
@@ -880,13 +831,14 @@ class HSVThresholdAdjuster(tk.Tk):
         angle = self.get_angle(event.x, event.y)
         if self.dragging == 'low':
             self.hue_low = angle
+            self.hue_low_scale.set(self.hue_low)
             self.update_threshold_lines()
             self.update_image()
         elif self.dragging == 'high':
             self.hue_high = angle
+            self.hue_high_scale.set(self.hue_high)
             self.update_threshold_lines()
             self.update_image()
-        self.update_rgb_entries()
 
     def get_angle(self, x, y):
         dx = x - self.wheel_radius
@@ -950,24 +902,28 @@ class HSVThresholdAdjuster(tk.Tk):
         y = self.wheel_radius + self.wheel_radius * np.sin(radians)
         return x, y
 
-    def update_image(self):
-        # Convert the image to HSV
-        hsv_image = self.original_image.convert('HSV')
+    def _apply_hsv_mask(self, image):
+        """Apply current HSV thresholds to an image and return the masked result.
+
+        Converts the image to HSV color space, creates boolean masks for each
+        channel (hue, saturation, value) based on the current threshold settings,
+        and sets all pixels outside the combined mask to black.
+
+        Handles circular hue wrap-around (e.g., selecting reds across 350-10 degrees).
+
+        Returns:
+            PIL.Image: The masked image with non-matching pixels set to black.
+        """
+        hsv_image = image.convert('HSV')
         hsv_array = np.array(hsv_image)
 
-        # Calculate hue thresholds
         hue_low = int((self.hue_low / 360) * 255)
         hue_high = int((self.hue_high / 360) * 255)
-
-        # Calculate saturation thresholds
         sat_low = int((self.sat_low / 100) * 255)
         sat_high = int((self.sat_high / 100) * 255)
-
-        # Calculate value thresholds
         val_low = int((self.val_low / 100) * 255)
         val_high = int((self.val_high / 100) * 255)
 
-        # Handle the circular nature of hue
         if hue_low <= hue_high:
             hue_mask = (hsv_array[:, :, 0] >= hue_low) & (hsv_array[:, :, 0] <= hue_high)
         else:
@@ -976,15 +932,15 @@ class HSVThresholdAdjuster(tk.Tk):
         sat_mask = (hsv_array[:, :, 1] >= sat_low) & (hsv_array[:, :, 1] <= sat_high)
         val_mask = (hsv_array[:, :, 2] >= val_low) & (hsv_array[:, :, 2] <= val_high)
 
-        # Combine masks
         mask = hue_mask & sat_mask & val_mask
 
-        # Apply the mask
-        masked_array = np.copy(np.array(self.original_image))
-        masked_array[~mask] = [0, 0, 0]  # Set pixels outside the threshold to black
+        masked_array = np.copy(np.array(image))
+        masked_array[~mask] = [0, 0, 0]
 
-        # Convert back to image
-        masked_image = Image.fromarray(masked_array)
+        return Image.fromarray(masked_array)
+
+    def update_image(self):
+        masked_image = self._apply_hsv_mask(self.original_image)
 
         # Resize the image according to the zoom level
         zoomed_width = int(self.image_width * self.zoom_level)
@@ -1072,32 +1028,8 @@ class HSVThresholdAdjuster(tk.Tk):
         )
         if save_path:
             try:
-                # Create a copy of the masked image
-                save_image = self.original_image.copy()
-
-                # Apply the HSV mask
-                hsv_image = save_image.convert('HSV')
-                hsv_array = np.array(hsv_image)
-                hue_low = int((self.hue_low / 360) * 255)
-                hue_high = int((self.hue_high / 360) * 255)
-                sat_low = int((self.sat_low / 100) * 255)
-                sat_high = int((self.sat_high / 100) * 255)
-                val_low = int((self.val_low / 100) * 255)
-                val_high = int((self.val_high / 100) * 255)
-
-                if hue_low <= hue_high:
-                    hue_mask = (hsv_array[:, :, 0] >= hue_low) & (hsv_array[:, :, 0] <= hue_high)
-                else:
-                    hue_mask = (hsv_array[:, :, 0] >= hue_low) | (hsv_array[:, :, 0] <= hue_high)
-
-                sat_mask = (hsv_array[:, :, 1] >= sat_low) & (hsv_array[:, :, 1] <= sat_high)
-                val_mask = (hsv_array[:, :, 2] >= val_low) & (hsv_array[:, :, 2] <= val_high)
-
-                mask = hue_mask & sat_mask & val_mask
-
-                masked_array = np.copy(np.array(save_image))
-                masked_array[~mask] = [0, 0, 0]
-                save_image = Image.fromarray(masked_array)
+                # Apply the HSV mask to a copy of the original image
+                save_image = self._apply_hsv_mask(self.original_image)
 
                 # Draw scale bar onto the image if it exists
                 if hasattr(self, 'scale_bar'):
@@ -1147,7 +1079,7 @@ class HSVThresholdAdjuster(tk.Tk):
                 # Save the image
                 save_image.save(save_path)
                 messagebox.showinfo("Save Image", "Image saved successfully.")
-            except Exception as e:
+            except (IOError, OSError) as e:
                 messagebox.showerror("Error", f"Failed to save image:\n{e}")
 
 if __name__ == '__main__':

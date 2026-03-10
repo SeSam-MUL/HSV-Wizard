@@ -1,0 +1,15 @@
+[project]
+name = "hsv-wizard"
+version = "1.0.0"
+description = "Interactive HSV color threshold adjuster with calibration and measurement tools for scientific image analysis"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [{name = "Sebastian Samberger"}]
+dependencies = [
+    "Pillow>=8.0",
+    "numpy>=1.19",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["code"]
